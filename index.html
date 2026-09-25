@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新专送薪资测算软件</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="tb-logo"><span class="dot"></span>新专送薪资测算</div>
+  <div class="tb-sep"></div>
+  <select class="tb-sel" id="schemeSel"><option value="">（未选择方案）</option></select>
+  <button class="tbtn" id="btnOpen">打开</button>
+  <button class="tbtn pri" id="btnSave">保存方案</button>
+  <button class="tbtn" id="btnSaveAs">另存为</button>
+  <button class="tbtn warn" id="btnDel">删除</button>
+  <div class="tb-sep"></div>
+  <button class="tbtn" id="btnExport">导出 Excel</button>
+  <button class="tbtn" id="btnReset">恢复默认</button>
+  <div class="tb-right">
+    <button class="tbtn" id="btnDir">方案备份</button>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-page="pageLadder">阶梯测算</div>
+  <div class="tab" data-page="pageBill">账单测算</div>
+</div>
+
+<div id="pageLadder" class="page">
+<div class="layout">
+  <aside class="panel">
+    <div class="ph"><span class="no">01</span><h2>基础设置</h2></div>
+    <div class="pb">
+      <div class="frow"><label>站点</label><select id="station"></select></div>
+      <div class="frow"><label>当月单量</label><input type="number" id="orders" value="1000" min="0" step="10"></div>
+      <div class="frow"><label></label><input type="range" id="ordersR" min="0" max="2500" step="10" value="1000"></div>
+      <div class="frow"><label>CN 单价</label><input type="number" id="cn" value="6" min="0" step="0.1"></div>
+      <div class="frow" style="margin-bottom:2px"><label></label>
+        <div style="font-size:11.5px;color:var(--mu2);line-height:1.5">CN = 甲方给我的钱（元/单）</div></div>
+    </div>
+
+    <div class="ph"><span class="no">02</span><h2>阶梯定价</h2><span class="hint" id="tierHint">档位可自由增删</span></div>
+    <div class="pb" style="padding-top:10px">
+      <table class="tbl" id="tierTbl">
+        <thead><tr><th>档位</th><th>起始单量</th><th>结束单量</th><th>单价(元/单)</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="tierbtns">
+        <button class="btn p" id="addTier">＋ 添加档位</button>
+        <button class="btn" id="resetTier">恢复默认</button>
+      </div>
+      <div id="tierMemo" class="tiermemo"></div>
+    </div>
+
+    <div class="ph"><span class="no">03</span><h2>跑单奖励科目</h2><span class="hint">勾选 = 达成</span></div>
+    <div class="pb" id="bonusBox"></div>
+
+    <div class="ph"><span class="no">04</span><h2>扣款项</h2><span class="hint">勾选 = 发生</span></div>
+    <div class="pb" id="deductBox"></div>
+  </aside>
+
+  <main>
+    <div class="kpi3">
+      <div class="kpi hi">
+        <div class="kl">骑手单均（我给骑手的钱）</div>
+        <div class="kv" id="kAvg">—</div>
+        <div class="kf" id="kAvgF">净收入 ÷ 计费单量</div>
+      </div>
+      <div class="kpi">
+        <div class="kl">CN 使用率</div>
+        <div class="kv" id="kUse">—</div>
+        <div class="kf" id="kUseF">骑手单均 ÷ CN</div>
+      </div>
+      <div class="kpi">
+        <div class="kl">每单毛利（CN − 单均）</div>
+        <div class="kv" id="kMarg">—</div>
+        <div class="kf" id="kMargF">甲方钱 − 骑手钱</div>
+      </div>
+    </div>
+
+    <section class="panel">
+      <div class="ph"><span class="no">05</span><h2>智能推荐方案</h2>
+        <span class="hint">按目标 CN 使用率反推阶梯单价 · ≤ 90% 合格 · 改 CN / 单量 / 阶梯后自动刷新</span></div>
+      <div class="pb">
+        <div class="recoctrl">
+          <span class="rclab">目标 CN 使用率</span>
+          <input type="range" id="recoRange" min="85" max="100" step="0.5" value="88">
+          <div class="rcnum"><input type="number" id="recoNum" min="85" max="100" step="0.5" value="88"><span>%</span></div>
+          <div class="recopresets" id="recoPresets"></div>
+        </div>
+        <div id="recoOut"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><span class="no">06</span><h2>当月账单（<span id="billN">1000</span> 单）</h2><span class="hint">收入项 − 扣款项</span></div>
+      <div class="pb" style="padding:4px 0 8px"><table class="bill" id="billTbl"></table></div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><span class="no">07</span><h2><span id="kNT">1000</span> 单能赚多少</h2>
+        <span class="hint">跟随「当月单量」自动同步</span></div>
+      <div class="pb">
+        <div class="kpi3">
+          <div class="kpi"><div class="kl">骑手 <span id="kNT2">1000</span> 单净收入</div><div class="kv g" id="k1000">—</div><div class="kf" id="k1000netF">按当前设置</div></div>
+          <div class="kpi"><div class="kl">骑手单均</div><div class="kv" id="k1000avg">—</div><div class="kf" id="k1000avgF">净收入 ÷ 1000</div></div>
+          <div class="kpi"><div class="kl">CN 使用率</div><div class="kv" id="k1000use">—</div><div class="kf" id="k1000useF">单均 ÷ CN</div></div>
+        </div>
+        <div id="alert1000"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><span class="no">08</span><h2>阶梯计费明细</h2><span class="hint">每档贡献多少单、多少钱</span></div>
+      <div class="pb" id="tierDetail"></div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><span class="no">09</span><h2>单量档位对照表</h2><span class="hint">200 ~ 2500 单</span></div>
+      <div class="pb" style="padding:12px 16px 16px">
+        <div class="tw" style="max-height:420px">
+          <table class="dt">
+            <thead><tr><th>单量</th><th>阶梯收入</th><th>补贴合计</th><th>扣款</th><th>净收入</th>
+              <th>骑手单均</th><th>CN 使用率</th><th>每单毛利</th><th>月度毛利</th></tr></thead>
+            <tbody id="ladderTbl"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><span class="no">10</span><h2>计算公式</h2><span class="hint">口径可复核</span></div>
+      <div class="pb" id="formulaBox"></div>
+    </section>
+  </main>
+</div>
+</div><!-- /pageLadder -->
+
+<!-- ================= 账单测算 ================= -->
+<div id="pageBill" class="page">
+  <div class="billwrap">
+
+    <div id="billEmpty" class="billempty">
+      <div class="be-ico">📄</div>
+      <h3>导入骑手薪资账单，一键测算</h3>
+      <p>支持平台导出的「骑手薪资文件」xlsx。导入后自动按骑手算出 <b>总单量</b>、<b>单均</b>、<b>CN 使用率</b> 和 <b>毛利</b>。</p>
+      <button class="btn p" id="billPick">选择账单文件</button>
+      <div class="be-tip">也可以把 xlsx 文件直接拖到这里</div>
+      <div class="be-note">
+        口径：<b>最终金额</b> = 薪资合计 + |预支|（预支在账单里是负数，代表已提前发出，按正数加回）　｜　
+        <b>单均</b> = 最终金额 ÷ 总单量　｜　<b>CN</b> = 甲方结算给我的钱（元/单，可随意改）　｜　<b>CN 使用率</b> = 单均 ÷ CN
+      </div>
+    </div>
+
+    <div id="billMain" style="display:none">
+      <div class="billbar">
+        <div class="bb-left">
+          <span class="bb-file" id="billFileInfo">—</span>
+          <span class="bb-meta" id="billMeta"></span>
+        </div>
+        <div class="bb-right">
+          <button class="tbtn dark" id="billReimport">重新导入</button>
+          <button class="tbtn dark" id="billExport">导出测算结果</button>
+        </div>
+      </div>
+
+      <div class="kpi5">
+        <div class="kpi"><div class="kl">骑手数（有单 / 总数）</div><div class="kv" id="bRiders">—</div><div class="kf" id="bRidersF"></div></div>
+        <div class="kpi"><div class="kl">总单量</div><div class="kv" id="bOrders">—</div><div class="kf" id="bOrdersF"></div></div>
+        <div class="kpi"><div class="kl">最终金额（薪资合计 + 预支）</div><div class="kv" id="bPay">—</div><div class="kf" id="bPayF"></div></div>
+        <div class="kpi hi"><div class="kl">整体骑手单均</div><div class="kv" id="bAvg">—</div><div class="kf" id="bAvgF"></div></div>
+        <div class="kpi"><div class="kl">CN 使用率</div><div class="kv" id="bUse">—</div><div class="kf" id="bUseF"></div></div>
+      </div>
+
+      <div class="cncard">
+        <div class="cn-h"><span class="cn-t">CN 设置</span>
+          <span class="cn-s">CN = 甲方结算给我方的钱（元/单）。留空的站点会用「全局 CN」。</span></div>
+        <div class="cn-body">
+          <div class="cn-global">
+            <label>全局 CN（元/单）</label>
+            <input type="number" id="billCn" value="6" step="0.1" min="0">
+          </div>
+          <div class="cn-stations" id="billCnStations"></div>
+          <div class="cn-result">
+            <div><span>每单毛利</span><b id="bMargin">—</b></div>
+            <div><span>总毛利</span><b id="bMonthMargin">—</b></div>
+            <div><span>保本 CN</span><b id="bBreakEven">—</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="billWarn"></div>
+
+      <section class="panel">
+        <div class="ph"><span class="no">A</span><h2>盈亏总览</h2>
+          <span class="hint">点卡片即可只看这一类骑手（打平判定：单均与 CN 相差 ±0.05 元内）</span></div>
+        <div class="pb"><div class="pnlrow" id="billPnl"></div></div>
+      </section>
+
+      <section class="panel">
+        <div class="ph"><span class="no">B</span><h2>站点汇总</h2><span class="hint">按站点看单均与 CN 使用率</span></div>
+        <div class="pb" style="padding:12px 16px 16px">
+          <div class="tw" style="max-height:none">
+            <table class="dt">
+              <thead><tr><th>站点</th><th>骑手数</th><th>有单</th><th>总单量</th><th>最终金额</th>
+                <th>骑手单均</th><th>CN 单价</th><th>CN 使用率</th><th>每单毛利</th><th>站点毛利</th></tr></thead>
+              <tbody id="billStationTbl"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="ph"><span class="no">C</span><h2>薪资方案汇总</h2>
+          <span class="hint">按基础薪资方案名称ID · 点一行即筛选该方案的骑手</span></div>
+        <div class="pb" style="padding:12px 16px 16px">
+          <div class="filters">
+            <select id="billSchemeFlag">
+              <option value="">全部方案</option>
+              <option value="win">✅ 赚钱的方案</option>
+              <option value="flat">➖ 打平的方案</option>
+              <option value="lose">❌ 亏损的方案</option>
+              <option value="lose_top">🔻 亏得最多的 TOP10</option>
+            </select>
+            <span class="hint" style="margin:0">口径：方案每单毛利 = CN − 方案单均（&gt; +0.05 赚钱 / ±0.05 打平 / &lt; −0.05 亏损）</span>
+            <span class="fcount" id="billSchemeCount"></span>
+          </div>
+          <div class="tw" style="max-height:none">
+            <table class="dt">
+              <thead><tr><th>基础薪资方案名称ID</th><th>骑手数</th><th>有单</th><th>总单量</th><th>最终金额</th>
+                <th>骑手单均</th><th>盈亏</th><th>盈亏分布</th><th>每单毛利</th><th>方案毛利</th><th>保本CN</th></tr></thead>
+              <tbody id="billSchemeTbl"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="ph"><span class="no">D</span><h2>骑手明细</h2>
+          <span class="hint">可按薪资方案 / 盈亏筛选 · 点表头可排序 · 单均过高/过低会标色</span></div>
+        <div class="pb">
+          <div class="filters">
+            <input type="text" id="billSearch" placeholder="搜索骑手姓名 / 站点 / 骑手ID…">
+            <select id="billSchemeFilter" class="w-lg" title="按基础薪资方案名称ID筛选"><option value="">全部薪资方案</option></select>
+            <select id="billStationFilter"><option value="">全部站点</option></select>
+            <select id="billSort">
+              <option value="loss_desc">亏损额 多→少</option>
+              <option value="profit_desc">毛利额 多→少</option>
+              <option value="avg_desc">单均 高→低</option>
+              <option value="avg_asc">单均 低→高</option>
+              <option value="orders_desc">单量 多→少</option>
+              <option value="orders_asc">单量 少→多</option>
+              <option value="use_desc">CN 使用率 高→低</option>
+              <option value="name">姓名</option>
+            </select>
+            <select id="billFlag">
+              <option value="">全部骑手</option>
+              <option value="win">✅ 赚钱的骑手</option>
+              <option value="flat">➖ 打平的骑手</option>
+              <option value="lose">❌ 亏损的骑手</option>
+              <option value="lose_top">🔻 亏得最多的 TOP20</option>
+              <option value="win_top">🏆 赚得最多的 TOP20</option>
+              <option value="zero">· 零单骑手</option>
+              <option value="top">· 单量/单均 TOP20</option>
+            </select>
+            <span class="fcount" id="billCount"></span>
+          </div>
+          <div class="tw" style="max-height:520px">
+            <table class="dt">
+              <thead><tr><th>骑手</th><th>站点</th><th>薪资方案</th><th>盈亏</th><th>总单量</th><th>非一口价</th><th>一口价</th>
+                <th>最终金额</th><th>薪资合计</th><th>预支</th><th>骑手单均</th><th>CN 使用率</th><th>每单毛利</th><th>总毛利</th></tr></thead>
+              <tbody id="billRiderTbl"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="ph"><span class="no">E</span><h2>亏损排行 & 调整测算</h2>
+          <span class="hint">谁在亏、亏多少、怎么调才能赚钱</span></div>
+        <div class="pb" id="billAdjust"></div>
+      </section>
+
+      <section class="panel">
+        <div class="ph"><span class="no">F</span><h2>费用构成</h2><span class="hint">钱从哪来、扣在哪</span></div>
+        <div class="pb" id="billCompose"></div>
+      </section>
+
+      <section class="panel">
+        <div class="ph"><span class="no">G</span><h2>计算公式</h2><span class="hint">口径可复核</span></div>
+        <div class="pb" id="billFormula"></div>
+      </section>
+    </div>
+
+    <input type="file" id="billFile" accept=".xlsx,.xlsm" hidden>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span id="stStatus" class="g">就绪</span>
+  <span id="stScheme">未选择方案</span>
+  <span id="stDir" style="margin-left:auto"></span>
+</div>
+
+<div id="toast"></div>
+
+<div class="mask" id="mask">
+  <div class="dlg">
+    <h3 id="dlgTitle">提示</h3>
+    <div class="bd" id="dlgBody"></div>
+    <div class="ft" id="dlgFoot"></div>
+  </div>
+</div>
+
+<script src="vendor/xlsx.bundle.js"></script>
+<script src="app.js"></script>
+<script src="bill.js"></script>
+</body>
+</html>

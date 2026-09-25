@@ -41,7 +41,7 @@ BPO.addEventListener('drop', e => {
    ========================================================= */
 const BILL_INCOME = ['基础配送费项','排班内基础薪资','排班内阶梯薪资','排班外基础薪资','长期激励金额','出勤奖励','全勤奖励','质保奖励','段位奖励','重量奖励','时段奖励','天气奖励','距离奖励','1对1直送奖励','捡货补贴','国补采集补贴','家宴补贴','大额单补贴','鲜花补贴','蛋糕补贴','难度补贴金额','活动收入','推荐奖励','其他加项','一口价','个税退款'];
 const BILL_DEDUCT = ['索赔','配送原因取消','违规送达','虚假报备','装备物资','水电费','住宿费用','车辆租金','骑士餐费','其他减项','个税扣款'];
-const BILL_ADJUST = ['自定义发薪（预支）','自定义发薪（提前发薪）'];
+const BILL_ADJUST = ['自定义发薪（提前发薪）','自定义发薪（预支）'];
 const BILL_SKIP = ['单量','原因','方式','名称'];
 const ADJ_NAME = { '自定义发薪（提前发薪）': '提前发薪', '自定义发薪（预支）': '预支' };
 
@@ -107,100 +107,112 @@ function parseBill(arrayBuf, fileName) {
   const adjCols = BILL_ADJUST.map(k => [k, find(k)]);
 
   const orEmpty = v => v ? String(v) : '';
-  const riders = [], warnings = [], taxMismatch = [];
-  let period = '';
+  const warnings = [], riders = [], usedInc = new Set(), usedDed = new Set();
+
+  [['id', '骑手ID'], ['name', '骑手姓名'], ['orders', '总单量']].forEach(([need, nm]) => {
+    if (idx[need] === null) warnings.push(`账单里没找到「${nm}」列`);
+  });
 
   for (let r = hdr + 1; r <= maxRow; r++) {
     if (_bNorm(cell(r, 1)) === '') continue;                 /* 首列为空 = 空行 */
-    const raw = i => (i === null ? null : cell(r, i + 1));
+    const gt = i => (i === null ? null : cell(r, i + 1));
     const g = i => (i === null ? 0 : _bNum(cell(r, i + 1)));
 
-    const income = [], deduct = [], adjust = [];
-    let incSum = 0, dedSum = 0, advSum = 0;
-    incCols.forEach(([k, i]) => { const v = g(i); if (Math.abs(v) > 0.004) { income.push([_bFriendly(k), v]); incSum += v; } });
-    dedCols.forEach(([k, i]) => { const v = Math.abs(g(i)); if (v > 0.004) { deduct.push([_bFriendly(k), v]); dedSum += v; } });
-    adjCols.forEach(([k, i]) => { const v = g(i); if (Math.abs(v) > 0.004) { adjust.push([ADJ_NAME[k] || _bFriendly(k), v]); advSum += v; } });
-
-    const paySettle = pround(g(idx.payNet), 2);
-    const advance = pround(advSum, 2);
-    const payFinal = pround(paySettle + Math.abs(advance), 2);
-    const orders = g(idx.orders);
-    const avg = orders > 0 ? pround(payFinal / orders, 4) : 0;
-    const cn = cnOf(orEmpty(cell(r, (idx.station || 0) + 1)).trim() || '');
-    const payDue = pround(incSum - dedSum, 2);
+    const inc = [], ded = [];
+    incCols.forEach(([k, i]) => {
+      const v = g(i);
+      if (Math.abs(v) > 0.004) { const n = _bFriendly(k); inc.push([n, pround(v, 2)]); usedInc.add(n); }
+    });
+    dedCols.forEach(([k, i]) => {
+      const v = g(i);
+      if (Math.abs(v) > 0.004) { const n = _bFriendly(k); ded.push([n, pround(v, 2)]); usedDed.add(n); }
+    });
+    const incSum = pround(inc.reduce((a, p) => a + p[1], 0), 2);
+    const dedSum = pround(ded.reduce((a, p) => a + p[1], 0), 2);
     const tax = g(idx.tax);
-    if (!period) {
-      const p = idx.period === null ? null : cell(r, idx.period + 1);
-      if (p) period = String(p);
-    }
-    if (Math.abs(tax - payDue) > 0.06 && tax > 0) {
-      taxMismatch.push([orEmpty(raw(idx.id)), pround(tax - payDue, 2)]);
-    }
-    if (orders <= 0) warnings.push(`骑手「${orEmpty(raw(idx.name))}」总单量为 0，单均无法计算。`);
-    if (payFinal < 0) warnings.push(`骑手「${orEmpty(raw(idx.name))}」最终金额为负（${payFinal}），请核对扣款。`);
+    const due = pround(incSum - dedSum, 2);
+
+    const adj = [];
+    adjCols.forEach(([k, i]) => {
+      const v = g(i);
+      if (Math.abs(v) > 0.004) adj.push([ADJ_NAME[_bNorm(k)] || _bFriendly(k), pround(v, 2)]);
+    });
+    const settle = pround(g(idx.payNet), 2);
+    const adv = pround(adj.reduce((a, p) => a + p[1], 0), 2);
+    const final = pround(settle + Math.abs(adv), 2);
 
     riders.push({
-      id: orEmpty(raw(idx.id)), name: orEmpty(raw(idx.name)),
-      station: orEmpty(raw(idx.station)).trim(),
-      scheme: orEmpty(raw(idx.scheme)).trim(),
-      status: orEmpty(raw(idx.status)).trim(),
-      orders, ordersN: g(idx.ordersN), ordersF: g(idx.ordersF), days: g(idx.days),
-      incomeSum: pround(incSum, 2), deductSum: pround(dedSum, 2),
-      payDue, paySettle, tax, advance, payFinal, avg, cn,
-      income, deduct, adjust,
+      id: orEmpty(gt(idx.id)),
+      name: orEmpty(gt(idx.name)).trim(),
+      station: orEmpty(gt(idx.station)).trim(),
+      scheme: orEmpty(gt(idx.scheme)).trim(),
+      orders: g(idx.orders), ordersN: g(idx.ordersN), ordersF: g(idx.ordersF), days: g(idx.days),
+      payFinal: final, paySettle: settle, advance: adv,
+      payNet: settle, payDue: due, tax: pround(tax, 2),
+      income: inc, deduct: ded, adjust: adj,
+      incomeSum: incSum, deductSum: dedSum,
     });
   }
+  if (!riders.length) throw new Error('表头下没有任何骑手数据行');
 
-  /* 站点聚合 */
-  const stations = [];
-  const byKey = {};
+  /* 账单周期：表头下第一格非空的周期列 */
+  let period = '';
+  for (let r = hdr + 1; r <= maxRow; r++) {
+    const v = cell(r, idx.period === null ? 1 : idx.period + 1);
+    if (!v) continue;
+    period = String(v); break;
+  }
+
+  /* 站点聚合（按总单量降序） */
+  const reg = {};
   riders.forEach(x => {
-    const key = x.station;
-    if (!(key in byKey)) {
-      byKey[key] = { name: key, riders: 0, active: 0, orders: 0, payFinal: 0, paySettle: 0, advance: 0, cn: x.cn };
-      stations.push(byKey[key]);
-    }
-    const s = byKey[key];
-    s.riders += 1;
-    if (x.orders > 0) s.active += 1;
-    s.orders += x.orders; s.payFinal += x.payFinal; s.paySettle += x.paySettle; s.advance += x.advance;
+    const s = x.station || '（未标注站点）';
+    if (!(s in reg)) reg[s] = { name: s, riders: 0, orders: 0, payFinal: 0, paySettle: 0, advance: 0, payDue: 0, active: 0 };
+    const d = reg[s];
+    d.riders += 1; d.orders += x.orders; d.payFinal += x.payFinal; d.paySettle += x.paySettle;
+    d.advance += x.advance; d.payDue += x.payDue;
+    if (x.orders > 0) d.active += 1;
   });
-  stations.forEach(s => {
-    s.payFinal = pround(s.payFinal, 2); s.paySettle = pround(s.paySettle, 2); s.advance = pround(s.advance, 2);
-    s.avg = s.orders > 0 ? pround(s.payFinal / s.orders, 4) : 0;
-  });
+  const stations = Object.keys(reg).map(k => reg[k]).sort((a, b) => b.orders - a.orders);
+  stations.forEach(d => ['orders', 'payFinal', 'paySettle', 'advance', 'payDue']
+    .forEach(k => { d[k] = pround(d[k], 2); }));
 
-  const sumOf = f => riders.reduce((a, x) => a + f(x), 0);
-  const incUsed = {};
-  const dedUsed = {};
-  riders.forEach(x => {
-    x.income.forEach(([k, v]) => { incUsed[k] = (incUsed[k] || 0) + v; });
-    x.deduct.forEach(([k, v]) => { dedUsed[k] = (dedUsed[k] || 0) + v; });
-  });
-  const sortBySum = m => Object.keys(m).sort((a, b) => m[b] - m[a]);
-  const incomeItems = sortBySum(incUsed).map(k => [k, pround(incUsed[k], 2)]);
-  const deductItems = sortBySum(dedUsed).map(k => [k, pround(dedUsed[k], 2)]);
+  const zero = riders.filter(x => x.orders <= 0).length;
+  if (zero) warnings.push(`${zero} 名骑手本月总单量为 0，单独标注，不参与单均排序`);
 
-  const tOrders = pround(sumOf(x => x.orders), 2);
-  const tPayFinal = pround(sumOf(x => x.payFinal), 2);
-  const tAdvance = pround(sumOf(x => x.advance), 2);
-  const tPaySettle = pround(sumOf(x => x.paySettle), 2);
-  const tAvg = tOrders > 0 ? pround(tPayFinal / tOrders, 4) : 0;
+  const sumBy = f => pround(riders.reduce((a, x) => a + f(x), 0), 2);
+  const totFinal = sumBy(x => x.payFinal), totSettle = sumBy(x => x.paySettle), totAdv = sumBy(x => x.advance);
+  const fmt2 = v => v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  warnings.unshift(`金额口径：最终金额 = 薪资合计 + |预支|。本期薪资合计 ${fmt2(totSettle)} 元，` +
+    `预支 ${fmt2(Math.abs(totAdv))} 元（账单里是负数，代表已提前发出），相加得最终金额 ${fmt2(totFinal)} 元；` +
+    `单均 = 最终金额 ÷ 总单量。`);
+
+  const nAdv = riders.filter(x => Math.abs(x.advance) > 0.004).length;
+  if (nAdv) warnings.push(`${nAdv} 名骑手本期有预支/提前发薪记录，其最终金额已把预支按正数加回`);
+
+  const neg = riders.filter(x => x.payFinal <= 0.005).length;
+  if (neg) warnings.push(`${neg} 名骑手最终金额为 0 或负数（本月无收入、只有扣款），已在明细中标灰，不计入单均`);
+
+  /* 科目清单：按全账单金额降序 */
+  const totBy = (col, set) => {
+    const m = {};
+    riders.forEach(x => x[col].forEach(p => { m[p[0]] = (m[p[0]] || 0) + p[1]; }));
+    return Array.from(set).sort((a, b) => (m[b] || 0) - (m[a] || 0));
+  };
 
   return {
-    ok: true, period: period || '（未标注）', headerRow: hdr, riderCount: riders.length,
-    totals: { riders: riders.length, active: sumOf(x => x.orders > 0 ? 1 : 0), orders: tOrders,
-              payFinal: tPayFinal, paySettle: tPaySettle, advance: tAdvance, avg: tAvg, cn: BS.cn },
-    caliber: {
-      payFinal: '薪资合计 + |预支|',
-      avg: '最终金额 ÷ 总单量',
-      income: '基础配送费项 + 排班内基础薪资 + 排班内阶梯薪资 + 各类奖励 + 活动收入 + 一口价 + 个税退款',
-      deduct: '索赔 + 装备物资 + 个税扣款 + 其他扣款',
-      adjust: '自定义发薪（预支/提前发薪）单独列出，取绝对值计入最终金额',
+    ok: true, period, headerRow: hdr, riderCount: riders.length,
+    totals: {
+      riders: riders.length,
+      active: riders.filter(x => x.orders > 0).length,
+      orders: sumBy(x => x.orders), ordersN: sumBy(x => x.ordersN), ordersF: sumBy(x => x.ordersF),
+      payFinal: totFinal, paySettle: totSettle, advance: totAdv,
+      payDue: sumBy(x => x.payDue), payNet: totSettle,
     },
-    incomeItems, deductItems, stations, riders,
-    warnings: warnings.concat(taxMismatch.length ? [`有 ${taxMismatch.length} 名骑手的「计税收入」与各项加总不一致（属正常现象，不影响测算）。`] : []),
-    file: fileName,
+    caliber: '最终金额 = 薪资合计 + |预支|（预支为负数，按正数加回）；单均 = 最终金额 ÷ 总单量',
+    incomeItems: totBy('income', usedInc),
+    deductItems: totBy('deduct', usedDed),
+    stations, riders, warnings, file: fileName,
   };
 }
 
